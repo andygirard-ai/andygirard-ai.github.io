@@ -27,7 +27,7 @@ mkdir -p "$APP_DIR" "$HOME/Library/LaunchAgents"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 
 # Saved settings from an earlier run (if any)
-CLIENT_ID="" VIN="" CAR="" CAR_IP="192.168.1.27" DOMAIN="andygirard-ai.github.io"
+CLIENT_ID="4dbae2ab-120c-47cf-8a36-45423999ccc4" VIN="" CAR="" CAR_IP="192.168.1.27" DOMAIN="andygirard-ai.github.io"
 GRACE_MIN=10 SNOOZE_MIN=15 BEDTIME=2130 QUIET_START=2230 QUIET_END=430
 [[ -f $APP_DIR/config ]] && source "$APP_DIR/config"
 [[ $BEDTIME == 2200 ]] && BEDTIME=2130   # new default: 9:30 PM
