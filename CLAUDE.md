@@ -20,6 +20,7 @@ New to coding, expert grower. When an instruction is for him, give small, exact 
 - Arrival detection: the Tesla's fixed IP (192.168.1.27) is pinged plus an ARP check. Away for ≥15 min and then present counts as an arrival. After a 10-minute grace period it checks the charge state.
 - Tesla Fleet API (NA), app "PlugCheck", scope `vehicle_device_data` only. Keep calls cheap; the free credit is $10/month and a wake costs about 2¢. `MAX_WAKES` = 8 per day.
 - Alerts go through the PushWard API (`https://api.pushward.app`): an approval-template Live Activity with Snooze 15 min / Snooze 1 hr / Not today buttons, plus time-sensitive nudges. The bedtime check is a critical alert. When PushWard is down, it falls back to Reminders.app.
+- Commute: 53.5 mi each way, about 23% one way (Andy's estimate, varies by season). `NEED_PCT` (default 50) is the charge needed for a round trip. Below it, evening nudges turn critical and overnight alerts are critical every 10 min (they wake him), because there's no time to charge in the morning. At or above it, overnight stays silent. A future idea: scale `NEED_PCT` by season or outside temperature.
 - The schedule:
   - 9:30 PM bedtime check.
   - Quiet hours 10:30 PM–4:30 AM: no nudges, and the car is never woken.

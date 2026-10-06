@@ -28,7 +28,7 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 
 # Saved settings from an earlier run (if any)
 CLIENT_ID="4dbae2ab-120c-47cf-8a36-45423999ccc4" VIN="" CAR="" CAR_IP="192.168.1.27" DOMAIN="andygirard-ai.github.io"
-GRACE_MIN=10 SNOOZE_MIN=15 SNOOZE_LONG_MIN=60 BEDTIME=2130 QUIET_START=2230 QUIET_END=430
+GRACE_MIN=10 SNOOZE_MIN=15 SNOOZE_LONG_MIN=60 NEED_PCT=50 BEDTIME=2130 QUIET_START=2230 QUIET_END=430
 LOOK_ICON=mdi:ev-plug-tesla LOOK_ACCENT='#E31937' LOOK_BG='#000000' LOOK_TEXT='#FFFFFF' LOOK_SOUND=chime LOOK_BATTERY_IN_ISLAND=1
 [[ -f $APP_DIR/config ]] && source "$APP_DIR/config"
 [[ $BEDTIME == 2200 ]] && BEDTIME=2130   # new default: 9:30 PM
@@ -186,6 +186,7 @@ BEDTIME=$BEDTIME       # nightly check, 24-hour HHMM (2130 = 9:30 PM)
 QUIET_START=$QUIET_START  # no nudges from 10:30 PM…
 QUIET_END=$QUIET_END      # …until 4:30 AM
 SNOOZE_LONG_MIN=$SNOOZE_LONG_MIN   # longer snooze button (minutes)
+NEED_PCT=$NEED_PCT          # below this % the car can't do tomorrow's commute: alerts turn critical and wake you overnight
 
 # Look — preview changes with:  ~/PlugCheck/plugcheck restart  then  ~/PlugCheck/plugcheck test
 LOOK_ICON=${(qq)LOOK_ICON}       # SF Symbol (bolt.car.fill, car.side.fill…) or Material icon (mdi:ev-plug-tesla, mdi:car-electric…)

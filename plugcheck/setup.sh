@@ -28,7 +28,7 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 
 # Saved settings from an earlier run (if any)
 CLIENT_ID="4dbae2ab-120c-47cf-8a36-45423999ccc4" VIN="" CAR="" CAR_IP="192.168.1.27" DOMAIN="andygirard-ai.github.io"
-GRACE_MIN=10 SNOOZE_MIN=15 SNOOZE_LONG_MIN=60 BEDTIME=2130 QUIET_START=2230 QUIET_END=430
+GRACE_MIN=10 SNOOZE_MIN=15 SNOOZE_LONG_MIN=60 NEED_PCT=50 BEDTIME=2130 QUIET_START=2230 QUIET_END=430
 LOOK_ICON=mdi:ev-plug-tesla LOOK_ACCENT='#E31937' LOOK_BG='#000000' LOOK_TEXT='#FFFFFF' LOOK_SOUND=chime LOOK_BATTERY_IN_ISLAND=1
 [[ -f $APP_DIR/config ]] && source "$APP_DIR/config"
 [[ $BEDTIME == 2200 ]] && BEDTIME=2130   # new default: 9:30 PM
@@ -186,6 +186,7 @@ BEDTIME=$BEDTIME       # nightly check, 24-hour HHMM (2130 = 9:30 PM)
 QUIET_START=$QUIET_START  # no nudges from 10:30 PM…
 QUIET_END=$QUIET_END      # …until 4:30 AM
 SNOOZE_LONG_MIN=$SNOOZE_LONG_MIN   # longer snooze button (minutes)
+NEED_PCT=$NEED_PCT          # below this % the car can't do tomorrow's commute: alerts turn critical and wake you overnight
 
 # Look — preview changes with:  ~/PlugCheck/plugcheck restart  then  ~/PlugCheck/plugcheck test
 LOOK_ICON=${(qq)LOOK_ICON}       # SF Symbol (bolt.car.fill, car.side.fill…) or Material icon (mdi:ev-plug-tesla, mdi:car-electric…)
@@ -239,6 +240,8 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 : ${NUDGE_SEC:=120}     # nudge interval at first…
 : ${NUDGE_FAST:=15}     # …for this many nudges,
 : ${NUDGE_SLOW_SEC:=600} # …then this interval
+: ${NEED_PCT:=50}       # below this, the car can't do tomorrow's commute → alerts escalate and can wake you
+: ${URGENT_NIGHT_SEC:=600} # overnight critical alert interval when below NEED_PCT
 : ${POLL_SEC:=120}      # how often to re-check the car while reminding
 : ${BEDTIME:=2130}      # bedtime check, 24h HHMM (9:30 PM)
 : ${AWAY_MIN:=15}       # off Wi-Fi this long = the car has left
@@ -257,6 +260,8 @@ log() {
   if [[ -f $LOG ]] && (( $(stat -f%z "$LOG") > 1000000 )); then mv -f "$LOG" "$LOG.old"; fi
   print -r -- "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG"
 }
+low_batt() { [[ $BAT == <-> ]] && (( BAT < NEED_PCT )); }
+evening() { local x=$(( 10#$(hm) )); (( x >= BEDTIME )) && ! quiet; }   # bedtime → start of quiet hours
 quiet() {   # handles windows that cross midnight (e.g. 2230 → 430)
   local x=$(( 10#$(hm) ))
   if (( QUIET_START <= QUIET_END )); then (( x >= QUIET_START && x < QUIET_END ))
@@ -434,6 +439,10 @@ ep_start() {   # ep_start KIND [FIRST_ALERT_LEVEL | none = silent renewal]
     details="[{\"label\":\"Car\",\"value\":\"$(jesc "$CAR") · $BAT%\"}]"
   else
     state="$CAR isn't plugged in" sub="Battery $BAT% · charges to $LIM%"
+    low_batt && sub="Only $BAT% — needs $NEED_PCT% for tomorrow"
+    if quiet; then   # overnight: stay silent unless the car can't make the commute
+      if low_batt; then level=critical; else level=none; fi
+    fi
     if [[ $kind == arrival ]]; then
       details="[{\"label\":\"Home since\",\"value\":\"$(clock $EP_HOME)\"}]"
     else
@@ -449,7 +458,11 @@ ep_start() {   # ep_start KIND [FIRST_ALERT_LEVEL | none = silent renewal]
   elif [[ $kind == demo ]]; then
     notify active "PlugCheck test" "Tap a button on the Live Activity — or press and hold this." 1
   else
-    notify "$level" "Plug in the $CAR 🔌" "Not plugged in · battery $BAT%. Press and hold for Snooze." 1
+    if low_batt; then
+      notify "$level" "Plug in the $CAR now 🔌" "Only $BAT% — not enough for tomorrow's commute (needs $NEED_PCT%)." 1
+    else
+      notify "$level" "Plug in the $CAR 🔌" "Not plugged in · battery $BAT%. Press and hold for Snooze." 1
+    fi
   fi
   EP_NOTIF=$NOTIF_ID
   NEXT_POLL=$(( t + POLL_SEC )) NEXT_NUDGE=$(( t + NUDGE_SEC ))
@@ -546,11 +559,27 @@ ep_tick() {
     NUDGES=$n NEXT_NUDGE=$nn
   fi
 
-  if (( t >= NEXT_NUDGE )) && ! quiet; then
-    NUDGES=$(( NUDGES + 1 ))
-    notify time-sensitive "Plug in the $CAR 🔌" "Still not plugged in · battery $BAT%. Press and hold for Snooze." 1
-    [[ -n $NOTIF_ID ]] && EP_NOTIF=$NOTIF_ID
-    if (( NUDGES < NUDGE_FAST )); then NEXT_NUDGE=$(( t + NUDGE_SEC )); else NEXT_NUDGE=$(( t + NUDGE_SLOW_SEC )); fi
+  if (( t >= NEXT_NUDGE )); then
+    if quiet && low_batt; then
+      # Not enough charge for the commute: wake him up, every URGENT_NIGHT_SEC
+      NUDGES=$(( NUDGES + 1 ))
+      notify critical "Plug in the $CAR now 🔌" "Only $BAT% — not enough for tomorrow's commute (needs $NEED_PCT%)." 1
+      [[ -n $NOTIF_ID ]] && EP_NOTIF=$NOTIF_ID
+      NEXT_NUDGE=$(( t + URGENT_NIGHT_SEC ))
+    elif quiet; then
+      NEXT_NUDGE=$(( t + 300 ))   # enough charge: let him sleep; re-evaluate in 5 min
+    else
+      NUDGES=$(( NUDGES + 1 ))
+      local lvl=time-sensitive
+      evening && low_batt && lvl=critical   # after bedtime check and too low: break through Sleep Focus
+      if low_batt; then
+        notify $lvl "Plug in the $CAR now 🔌" "Still not plugged in · only $BAT% (needs $NEED_PCT% for tomorrow)." 1
+      else
+        notify $lvl "Plug in the $CAR 🔌" "Still not plugged in · battery $BAT%. Press and hold for Snooze." 1
+      fi
+      [[ -n $NOTIF_ID ]] && EP_NOTIF=$NOTIF_ID
+      if (( NUDGES < NUDGE_FAST )) || { evening && low_batt; }; then NEXT_NUDGE=$(( t + NUDGE_SEC )); else NEXT_NUDGE=$(( t + NUDGE_SLOW_SEC )); fi
+    fi
   fi
 }
 
@@ -573,8 +602,13 @@ arrival_check() {
   EP_HOME=$ARRIVED_AT ARRIVED_AT=0
   if [[ -n $EP ]]; then return 0; fi
   if (( SKIP_UNTIL > $(now) )); then log "arrival: skipped (Not today)"; return 0; fi
-  if quiet; then log "arrival during quiet hours — leaving it alone"; return 0; fi
   if (( AWAY_SINCE > 0 )); then log "arrival: car left again"; return 0; fi
+  if quiet; then
+    car_status 0 >/dev/null 2>&1
+    if low_batt; then start_if_unplugged arrival critical
+    else log "arrival during quiet hours — enough charge, leaving it alone"; fi
+    return 0
+  fi
   start_if_unplugged arrival time-sensitive
 }
 

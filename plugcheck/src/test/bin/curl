@@ -37,7 +37,7 @@ elif '/api/1/vehicles/' in url and url.endswith('/wake_up'):
     open(f'{F}/car_state','w').write('online'); body={'response':{'state':'online'}}
 elif '/api/1/vehicles/' in url and 'vehicle_data' in url:
     if rd('car_state','online')!='online': code=408; body={'error':'vehicle unavailable'}
-    else: body={'response':{'charge_state':{'charging_state':rd('cs','Disconnected'),'battery_level':54,'charge_limit_soc':80}}}
+    else: body={'response':{'charge_state':{'charging_state':rd('cs','Disconnected'),'battery_level':int(rd('bat','54')),'charge_limit_soc':80}}}
 elif '/api/1/vehicles/' in url:
     body={'response':{'state':rd('car_state','online'),'vin':'VIN1'}}
 elif 'pushward' in url:
