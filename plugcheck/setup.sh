@@ -83,9 +83,14 @@ if (( ! TESLA_OK )); then
   DOMAIN=${DOMAIN#https://}; DOMAIN=${DOMAIN#http://}; DOMAIN=${DOMAIN%/}
   read "IN?Tesla Client ID${CLIENT_ID:+ [$CLIENT_ID]}: "
   CLIENT_ID=${IN:-$CLIENT_ID}; CLIENT_ID=${CLIENT_ID//[[:space:]]/}
-  read -s "CLIENT_SECRET?Tesla Client Secret (stays hidden when you paste): "; print
+  print "Next: the Client Secret. On developer.tesla.com → PlugCheck → Credentials & APIs,"
+  print "click the eye next to Client Secret, copy it, then paste here."
+  read -s "CLIENT_SECRET?Tesla Client Secret (nothing shows while you paste — that's normal): "; print
   CLIENT_SECRET=${CLIENT_SECRET//[[:space:]]/}
   [[ -n $CLIENT_ID && -n $CLIENT_SECRET ]] || fail "Both the Client ID and Client Secret are needed."
+  [[ $CLIENT_SECRET == hlk_* ]] && fail "That's your PushWard key, not the Tesla Client Secret. Copy the secret from developer.tesla.com and run setup again."
+  [[ $CLIENT_SECRET == $CLIENT_ID ]] && fail "That's the Client ID again, not the Client Secret. Click the eye next to Client Secret, copy that, and run setup again."
+  print "  (got ${#CLIENT_SECRET} characters, starting \"${CLIENT_SECRET[1,4]}…\")"
   REDIRECT="https://$DOMAIN/plugcheck/"
 
   KEY_URL="https://$DOMAIN/.well-known/appspecific/com.tesla.3p.public-key.pem"
@@ -101,9 +106,15 @@ if (( ! TESLA_OK )); then
     --data-urlencode client_secret="$CLIENT_SECRET" \
     --data-urlencode scope="openid vehicle_device_data" \
     --data-urlencode audience="$API" -o "$TMP/partner.json"
-  PARTNER=$(json "$TMP/partner.json" access_token) \
-    || fail "Tesla didn't accept that Client ID / Secret:
+  if ! PARTNER=$(json "$TMP/partner.json" access_token); then
+    if grep -q unauthorized_client "$TMP/partner.json"; then
+      fail "Tesla says that Client Secret doesn't match the PlugCheck app.
+  What you pasted starts \"${CLIENT_SECRET[1,4]}…\" and is ${#CLIENT_SECRET} characters.
+  Copy it again (eye icon next to Client Secret on developer.tesla.com) and run setup again."
+    fi
+    fail "Tesla didn't accept that Client ID / Secret:
   $(cat "$TMP/partner.json")"
+  fi
   curl -sS --max-time 30 -X POST "$API/api/1/partner_accounts" \
     -H "Authorization: Bearer $PARTNER" -H "Content-Type: application/json" \
     -d "{\"domain\":\"$DOMAIN\"}" -o "$TMP/reg.json"
