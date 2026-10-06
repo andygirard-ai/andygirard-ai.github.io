@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+# Mock curl for Tesla + PushWard. State lives in $FAKE.
+import sys, os, json
+F=os.environ['FAKE']; a=sys.argv[1:]
+def rd(n,d=''):
+    p=f'{F}/{n}'; return open(p).read().strip() if os.path.exists(p) else d
+method='GET'; url=''; out=None; wfmt=None; data=None; form=[]
+i=0
+while i<len(a):
+    x=a[i]
+    if x=='-X': method=a[i+1]; i+=2; continue
+    if x=='-o': out=a[i+1]; i+=2; continue
+    if x=='-w': wfmt=a[i+1]; i+=2; continue
+    if x in('-H','--max-time'): i+=2; continue
+    if x=='--data-binary': data=a[i+1]; i+=2; continue
+    if x=='--data-urlencode': form.append(a[i+1]); method='POST' if method=='GET' else method; i+=2; continue
+    if x.startswith('http'): url=x
+    i+=1
+if data is not None and method=='GET': method='POST'
+open(f'{F}/requests.log','a').write(f"{method} {url} {data or ' '.join(f for f in form if 'secret' not in f)}\n")
+code=200; body={}
+if rd('net_down')=='1': sys.exit(7)
+if '/plugcheck/plugcheckd.zsh' in url or '/plugcheck/plugcheck?' in url:
+    src=os.environ['PLUGCHECK_SRC']+'/plugcheckd.zsh' if 'plugcheckd' in url else os.environ['PLUGCHECK_SRC']+'/plugcheck-ctl.zsh'
+    open(out,'w').write(open(src).read()); sys.exit(0)
+if '.well-known' in url:
+    sys.stdout.write('-----BEGIN PUBLIC KEY-----\nMFk...\n-----END PUBLIC KEY-----\n'); sys.exit(0)
+elif url.endswith('/api/1/partner_accounts'):
+    body={'response':{'domain':'andygirard-ai.github.io'}}
+elif url.endswith('/api/1/vehicles'):
+    body={'response':[{'vin':'VIN1','display_name':'Model Y'}]}
+elif 'oauth2/v3/token' in url and any(f=='client_secret=bad' for f in form):
+    code=401; body={'error':'unauthorized_client','error_description':'invalid'}
+elif 'oauth2/v3/token' in url:
+    body={'access_token':'AT','refresh_token':'RT-new','expires_in':28800}
+elif '/api/1/vehicles/' in url and url.endswith('/wake_up'):
+    open(f'{F}/car_state','w').write('online'); body={'response':{'state':'online'}}
+elif '/api/1/vehicles/' in url and 'vehicle_data' in url:
+    if rd('car_state','online')!='online': code=408; body={'error':'vehicle unavailable'}
+    else: body={'response':{'charge_state':{'charging_state':rd('cs','Disconnected'),'battery_level':54,'charge_limit_soc':80}}}
+elif '/api/1/vehicles/' in url:
+    body={'response':{'state':rd('car_state','online'),'vin':'VIN1'}}
+elif 'pushward' in url:
+    path=url.split('pushward.app',1)[1]
+    if rd('pw_down')=='1': code=503; body={'error':'down'}
+    elif path=='/notifications' and method=='POST':
+        n=int(rd('notif_seq','0'))+1; open(f'{F}/notif_seq','w').write(str(n)); body={'id':n}; code=201
+    elif path.startswith('/notifications/answers/'):
+        nid=path.rsplit('/',1)[1]; ans=rd('answer_notif')
+        body={'notification_id':int(nid),'status':'answered','action_id':ans} if ans else {'notification_id':int(nid),'status':'pending'}
+    elif path=='/activities' and method=='POST': code=201; body=json.loads(data)
+    elif path.startswith('/activities/') and method=='GET':
+        ans=rd('answer_activity'); c={'template':'approval'}
+        if ans: c['answer']={'option':ans,'by':'user','at':1}
+        body={'slug':path.split('/')[2].split('?')[0],'state':'ended' if ans else 'ongoing','content':c}
+    elif path.startswith('/activities/') and method=='PATCH': body={'ok':True}
+    elif path=='/auth/me': body={'id':'u1'}
+if out:
+    open(out,'w').write(json.dumps(body))
+else:
+    sys.stdout.write(json.dumps(body))
+if wfmt: sys.stdout.write(str(code))

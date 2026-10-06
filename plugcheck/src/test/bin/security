@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+import sys, os
+a=sys.argv[1:]; d=os.environ['FAKE']+'/kc'; os.makedirs(d,exist_ok=True)
+s=a[a.index('-s')+1]; acct=a[a.index('-a')+1]; p=f'{d}/{s}--{acct}'
+if a[0]=='find-generic-password':
+    if not os.path.exists(p): sys.exit(44)
+    print(open(p).read())
+elif a[0]=='add-generic-password':
+    open(p,'w').write(a[a.index('-w')+1])

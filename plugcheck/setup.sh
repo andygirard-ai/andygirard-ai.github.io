@@ -29,9 +29,10 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 # Saved settings from an earlier run (if any)
 CLIENT_ID="4dbae2ab-120c-47cf-8a36-45423999ccc4" VIN="" CAR="" CAR_IP="192.168.1.27" DOMAIN="andygirard-ai.github.io"
 GRACE_MIN=10 SNOOZE_MIN=15 SNOOZE_LONG_MIN=60 BEDTIME=2130 QUIET_START=2230 QUIET_END=430
-LOOK_ICON=bolt.car.fill LOOK_ACCENT=orange LOOK_SOUND=chime LOOK_BATTERY_IN_ISLAND=1
+LOOK_ICON=mdi:ev-plug-tesla LOOK_ACCENT='#E31937' LOOK_BG='#000000' LOOK_TEXT='#FFFFFF' LOOK_SOUND=chime LOOK_BATTERY_IN_ISLAND=1
 [[ -f $APP_DIR/config ]] && source "$APP_DIR/config"
 [[ $BEDTIME == 2200 ]] && BEDTIME=2130   # new default: 9:30 PM
+[[ $LOOK_ICON == bolt.car.fill && $LOOK_ACCENT == orange ]] && { LOOK_ICON=mdi:ev-plug-tesla LOOK_ACCENT='#E31937' LOOK_BG='#000000' LOOK_TEXT='#FFFFFF'; }   # move to the Tesla look
 HAVE_TESLA=0; security find-generic-password -s "$KC" -a refresh_token >/dev/null 2>&1 && HAVE_TESLA=1
 HAVE_PW=0;    security find-generic-password -s "$KC" -a pushward >/dev/null 2>&1 && HAVE_PW=1
 
@@ -187,8 +188,10 @@ QUIET_END=$QUIET_END      # …until 4:30 AM
 SNOOZE_LONG_MIN=$SNOOZE_LONG_MIN   # longer snooze button (minutes)
 
 # Look — preview changes with:  ~/PlugCheck/plugcheck restart  then  ~/PlugCheck/plugcheck test
-LOOK_ICON=${(qq)LOOK_ICON}       # any SF Symbol name (bolt.car.fill, powerplug.fill, car.fill …)
-LOOK_ACCENT=${(qq)LOOK_ACCENT}          # named color (orange, red, blue…) or hex like '#E31937'
+LOOK_ICON=${(qq)LOOK_ICON}       # SF Symbol (bolt.car.fill, car.side.fill…) or Material icon (mdi:ev-plug-tesla, mdi:car-electric…)
+LOOK_ACCENT=${(qq)LOOK_ACCENT}          # buttons and icon: named color (orange, red…) or hex ('#E31937' = Tesla red)
+LOOK_BG=${(qq)LOOK_BG}              # card background ('' = PushWard default)
+LOOK_TEXT=${(qq)LOOK_TEXT}            # text color ('' = PushWard default)
 LOOK_SOUND=${(qq)LOOK_SOUND}            # default chime alert success warning bell ding buzz notification
 LOOK_BATTERY_IN_ISLAND=$LOOK_BATTERY_IN_ISLAND      # 1 = battery % in the Dynamic Island, 0 = icon
 EOF
@@ -226,8 +229,10 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 : ${SNOOZE_MIN:=15}     # short snooze (minutes)
 : ${SNOOZE_LONG_MIN:=60} # long snooze (minutes)
 # Look (all editable in config)
-: ${LOOK_ICON:=bolt.car.fill}          # SF Symbol on the Live Activity
-: ${LOOK_ACCENT:=orange}               # accent color: named (orange, red…) or hex (#FF9F0A)
+: ${LOOK_ICON:=mdi:ev-plug-tesla}      # SF Symbol, or mdi:… Material icon
+: ${LOOK_ACCENT:=#E31937}              # accent color: named (orange, red…) or hex
+: ${LOOK_BG:=#000000}                  # card background ('' = PushWard default)
+: ${LOOK_TEXT:=#FFFFFF}                # text color ('' = PushWard default)
 : ${LOOK_SOUND:=chime}                 # default chime alert success warning bell ding buzz notification
 : ${LOOK_BATTERY_IN_ISLAND:=1}         # 1 = show battery % in the Dynamic Island
 : ${LOOK_NOTIF_ICON:=https://andygirard-ai.github.io/plugcheck/icon.png}
@@ -419,7 +424,9 @@ presence() {
 ep_start() {   # ep_start KIND [FIRST_ALERT_LEVEL | none = silent renewal]
   local kind=$1 level=${2:-time-sensitive} t=$(now) state sub details snd=",\"sound\":\"$LOOK_SOUND\""
   [[ $level == none ]] && snd=""
-  local compact=""
+  local compact="" colors=""
+  [[ -n $LOOK_BG ]] && colors+=",\"background_color\":\"$LOOK_BG\""
+  [[ -n $LOOK_TEXT ]] && colors+=",\"text_color\":\"$LOOK_TEXT\""
   (( LOOK_BATTERY_IN_ISLAND )) && [[ $BAT == <-> ]] && compact=",\"compact_label\":\"$BAT%\""
   EP="plug-$(date +%Y%m%d-%H%M%S)" EP_KIND=$kind EP_START=$t NUDGES=0 EP_NOTIF=""
   if [[ $kind == demo ]]; then
@@ -435,7 +442,7 @@ ep_start() {   # ep_start KIND [FIRST_ALERT_LEVEL | none = silent renewal]
   fi
   log "reminder started ($kind) → $EP"
   if pw POST /activities "{\"slug\":\"$EP\",\"name\":\"Plug in?\",\"stale_ttl\":28800,\"ended_ttl\":86400}"; then
-    pw PATCH "/activities/$EP" "{\"state\":\"ongoing\"$snd,\"content\":{\"template\":\"approval\",\"state\":\"$(jesc "$state")\",\"subtitle\":\"$(jesc "$sub")\",\"icon\":\"$LOOK_ICON\",\"accent_color\":\"$LOOK_ACCENT\",\"source\":\"PlugCheck\",\"details\":$details$compact,\"options\":[{\"id\":\"snooze\",\"title\":\"$SHORT_LBL\",\"style\":\"primary\",\"icon\":\"moon.zzz\"},{\"id\":\"snooze_long\",\"title\":\"$LONG_LBL\",\"style\":\"secondary\",\"icon\":\"clock\"},{\"id\":\"skip\",\"title\":\"Not today\",\"style\":\"secondary\",\"icon\":\"xmark\"}]}}"
+    pw PATCH "/activities/$EP" "{\"state\":\"ongoing\"$snd,\"content\":{\"template\":\"approval\",\"state\":\"$(jesc "$state")\",\"subtitle\":\"$(jesc "$sub")\",\"icon\":\"$LOOK_ICON\",\"accent_color\":\"$LOOK_ACCENT\",\"source\":\"PlugCheck\",\"details\":$details$compact$colors,\"options\":[{\"id\":\"snooze\",\"title\":\"$SHORT_LBL\",\"style\":\"primary\",\"icon\":\"moon.zzz\"},{\"id\":\"snooze_long\",\"title\":\"$LONG_LBL\",\"style\":\"secondary\",\"icon\":\"clock\"},{\"id\":\"skip\",\"title\":\"Not today\",\"style\":\"secondary\",\"icon\":\"xmark\"}]}}"
   fi
   if [[ $level == none ]]; then
     :

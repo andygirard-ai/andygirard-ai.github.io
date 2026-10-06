@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+# shim: plutil -extract KEY.PATH raw -o - FILE
+import sys, json
+a=sys.argv[1:]; key=a[a.index('-extract')+1]; f=a[-1]
+try: d=json.load(open(f))
+except Exception: sys.exit(1)
+for k in key.split('.'):
+    if isinstance(d,list):
+        try: d=d[int(k)]
+        except Exception: sys.exit(1)
+    elif isinstance(d,dict) and k in d: d=d[k]
+    else: sys.exit(1)
+fmt=a[a.index('-extract')+2]
+if fmt=='json':
+    sys.stdout.write(json.dumps(d)); sys.exit(0)
+if d is None or isinstance(d,(dict,list)): sys.exit(1)
+if isinstance(d,bool): d='true' if d else 'false'
+sys.stdout.write(str(d))

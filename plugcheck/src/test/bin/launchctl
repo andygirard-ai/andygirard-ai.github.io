@@ -1,0 +1,6 @@
+#!/bin/sh
+case $1 in
+  bootstrap) PLUGCHECK_MAX_TICKS=400 nohup zsh "$HOME/PlugCheck/plugcheckd.zsh" >/dev/null 2>"$FAKE/daemon.err" & echo $! > "$FAKE/daemon.pid" ;;
+  bootout) [ -f "$FAKE/daemon.pid" ] && kill $(cat "$FAKE/daemon.pid") 2>/dev/null; exit 0 ;;
+  print) [ -f "$FAKE/daemon.pid" ] && kill -0 $(cat "$FAKE/daemon.pid") 2>/dev/null ;;
+esac

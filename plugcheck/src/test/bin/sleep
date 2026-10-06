@@ -1,0 +1,2 @@
+#!/bin/sh
+f="$FAKE/now"; n=$(( $(cat "$f") + ${1%.*} )); echo $n > "$f.$$" && mv -f "$f.$$" "$f"; /bin/sleep 0.05

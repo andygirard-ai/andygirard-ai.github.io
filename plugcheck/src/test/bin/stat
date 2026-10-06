@@ -1,0 +1,3 @@
+#!/bin/sh
+# stat -f%z FILE
+wc -c < "$2" | tr -d " "
