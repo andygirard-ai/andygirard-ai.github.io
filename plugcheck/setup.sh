@@ -78,43 +78,51 @@ if (( HAVE_TESLA )) && [[ -n $CLIENT_ID && -n $VIN ]]; then
 fi
 
 if (( ! TESLA_OK )); then
-  read "IN?GitHub Pages address [${DOMAIN:-andygirard-ai.github.io}]: "
-  DOMAIN=${IN:-${DOMAIN:-andygirard-ai.github.io}}
+  # Already known — only ask if somehow missing
+  DOMAIN=${DOMAIN:-andygirard-ai.github.io}
   DOMAIN=${DOMAIN#https://}; DOMAIN=${DOMAIN#http://}; DOMAIN=${DOMAIN%/}
-  read "IN?Tesla Client ID${CLIENT_ID:+ [$CLIENT_ID]}: "
-  CLIENT_ID=${IN:-$CLIENT_ID}; CLIENT_ID=${CLIENT_ID//[[:space:]]/}
-  print "Next: the Client Secret. On developer.tesla.com → PlugCheck → Credentials & APIs,"
-  print "click the eye next to Client Secret, copy it, then paste here."
-  read -s "CLIENT_SECRET?Tesla Client Secret (nothing shows while you paste — that's normal): "; print
-  CLIENT_SECRET=${CLIENT_SECRET//[[:space:]]/}
-  [[ -n $CLIENT_ID && -n $CLIENT_SECRET ]] || fail "Both the Client ID and Client Secret are needed."
-  [[ $CLIENT_SECRET == hlk_* ]] && fail "That's your PushWard key, not the Tesla Client Secret. Copy the secret from developer.tesla.com and run setup again."
-  [[ $CLIENT_SECRET == $CLIENT_ID ]] && fail "That's the Client ID again, not the Client Secret. Click the eye next to Client Secret, copy that, and run setup again."
-  print "  (got ${#CLIENT_SECRET} characters, starting \"${CLIENT_SECRET[1,4]}…\")"
+  if [[ -z $CLIENT_ID ]]; then
+    read "CLIENT_ID?Tesla Client ID: "; CLIENT_ID=${CLIENT_ID//[[:space:]]/}
+  fi
   REDIRECT="https://$DOMAIN/plugcheck/"
 
   KEY_URL="https://$DOMAIN/.well-known/appspecific/com.tesla.3p.public-key.pem"
   curl -fsS --max-time 20 "$KEY_URL" 2>/dev/null | grep -q "BEGIN PUBLIC KEY" \
     || fail "Couldn't find your public key at
   $KEY_URL
-  Finish the GitHub step (the key file and _config.yml), wait a minute, then run setup again."
+  Wait a minute, then run setup again."
   ok "Public key is online"
 
-  curl -sS --max-time 30 -X POST "$AUTH" \
-    --data-urlencode grant_type=client_credentials \
-    --data-urlencode client_id="$CLIENT_ID" \
-    --data-urlencode client_secret="$CLIENT_SECRET" \
-    --data-urlencode scope="openid vehicle_device_data" \
-    --data-urlencode audience="$API" -o "$TMP/partner.json"
-  if ! PARTNER=$(json "$TMP/partner.json" access_token); then
+  print ""
+  print "Now the Tesla Client Secret:"
+  print "  1. In the Claude app's browser (developer.tesla.com → PlugCheck → Credentials & APIs)"
+  print "  2. Click the eye icon next to Client Secret so the real text shows (not dots)"
+  print "  3. Copy it, come back here, paste with ⌘V, press Return"
+  print "  (Nothing appears while you paste — that's normal.)"
+  PARTNER=""
+  for TRY in 1 2 3 4 5; do
+    read -s "CLIENT_SECRET?Client Secret: "; print
+    CLIENT_SECRET=${CLIENT_SECRET//[[:space:]]/}
+    if [[ -z $CLIENT_SECRET ]]; then warn "Nothing was pasted — try again."; continue; fi
+    if [[ $CLIENT_SECRET == hlk_* ]]; then warn "That's your PushWard key, not the Tesla secret — try again."; continue; fi
+    if [[ $CLIENT_SECRET == $CLIENT_ID ]]; then warn "That's the Client ID, not the secret — click the eye next to Client Secret and copy that."; continue; fi
+    if [[ $CLIENT_SECRET == *•* || $CLIENT_SECRET == *\** ]]; then warn "That's the hidden dots — click the eye icon first so the real secret shows, then copy."; continue; fi
+    print "  Got ${#CLIENT_SECRET} characters, starting \"${CLIENT_SECRET[1,4]}…\" — checking with Tesla…"
+    curl -sS --max-time 30 -X POST "$AUTH" \
+      --data-urlencode grant_type=client_credentials \
+      --data-urlencode client_id="$CLIENT_ID" \
+      --data-urlencode client_secret="$CLIENT_SECRET" \
+      --data-urlencode scope="openid vehicle_device_data" \
+      --data-urlencode audience="$API" -o "$TMP/partner.json"
+    if PARTNER=$(json "$TMP/partner.json" access_token); then ok "Tesla accepted the secret"; break; fi
+    PARTNER=""
     if grep -q unauthorized_client "$TMP/partner.json"; then
-      fail "Tesla says that Client Secret doesn't match the PlugCheck app.
-  What you pasted starts \"${CLIENT_SECRET[1,4]}…\" and is ${#CLIENT_SECRET} characters.
-  Copy it again (eye icon next to Client Secret on developer.tesla.com) and run setup again."
+      warn "Tesla says that isn't the right secret. Make sure the eye is clicked and you copy the whole thing — try again."
+    else
+      warn "Tesla answered: $(head -c 200 "$TMP/partner.json") — try again."
     fi
-    fail "Tesla didn't accept that Client ID / Secret:
-  $(cat "$TMP/partner.json")"
-  fi
+  done
+  [[ -n $PARTNER ]] || fail "Still not accepted after 5 tries. Send Claude the lines above."
   curl -sS --max-time 30 -X POST "$API/api/1/partner_accounts" \
     -H "Authorization: Bearer $PARTNER" -H "Content-Type: application/json" \
     -d "{\"domain\":\"$DOMAIN\"}" -o "$TMP/reg.json"
